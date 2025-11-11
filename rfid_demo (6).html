@@ -1,0 +1,257 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>RFID Badge Cloning Detector — Demo</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;margin:0;background:#f3f4f6;color:#111}
+    .wrap{max-width:900px;margin:36px auto;padding:20px;background:#fff;border-radius:12px;box-shadow:0 6px 24px rgba(2,6,23,0.08)}
+    h1{margin:0 0 6px;font-size:20px}
+    p.lead{margin:0 0 18px;color:#555}
+    .grid{display:grid;grid-template-columns:1fr 320px;gap:18px}
+    label{display:block;font-size:13px;color:#444;margin-bottom:6px}
+    input[type=text]{width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-size:14px;box-sizing:border-box}
+    button{padding:8px 12px;border-radius:8px;border:0;background:#0ea5a4;color:#fff;cursor:pointer;font-weight:600}
+    button.ghost{background:#eef2f7;color:#111;border:1px solid #d7dbe0}
+    .row{display:flex;gap:8px;flex-wrap:wrap}
+    .panel{background:#fbfdff;padding:12px;border-radius:10px;border:1px solid #eef2f7}
+    .small{font-size:13px;color:#666}
+    ul{padding-left:16px;margin:6px 0}
+    .badge{display:inline-block;padding:6px 10px;border-radius:999px;background:#e6fffa;color:#054e46;font-weight:700;font-size:12px}
+    .danger{background:#ffeef0;color:#7a0b1f}
+    .warn{background:#fff7ed;color:#7a4b00}
+    table{width:100%;border-collapse:collapse}
+    td,th{padding:8px;border-bottom:1px solid #f0f2f4;font-size:13px}
+    .muted{color:#6b7280;font-size:13px}
+    footer{margin-top:18px;font-size:13px;color:#555}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .history-item{padding:8px;border-radius:8px;background:#fff;margin-bottom:8px;border:1px solid #f0f2f4;display:flex;justify-content:space-between;align-items:center}
+    .status-pill{padding:6px 10px;border-radius:999px;color:#fff;font-weight:700;font-size:12px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>RFID Badge Cloning Detector — Demo for fundamentals of cyber security  </h1>
+    <p class="lead">. Enter a card UID and the presented name, then press <strong>Scan</strong><strong>ان شاء الله يعجبكم </strong> .</p>
+    <div class="grid">
+      <div>
+        <div class="panel">
+          <label for="uid">Card UID (hex)</label>
+          <input id="uid" type="text" placeholder="e.g. 04A3B21F" autocomplete="off">
+
+          <label for="name" style="margin-top:10px">Presented owner name</label>
+          <input id="name" type="text" placeholder="Name of the person presenting the card">
+
+          <div class="controls">
+            <button id="scanBtn">Scan</button>
+            <button id="registerBtn" class="ghost">Register UID</button>
+            <button id="clearStorage" class="ghost">Reset Data</button>
+            <button id="exampleGood" class="ghost">Example (Genuine)</button>
+            <button id="exampleClone" class="ghost">Example (Clone)</button>
+          </div>
+
+          <div style="margin-top:12px" class="small muted">
+            Tip: To simulate cloning, scan a registered UID but enter a different owner name.
+          </div>
+        </div>
+
+        <div style="margin-top:12px" class="panel">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <strong>Result</strong>
+            <span id="resultTime" class="muted small"></span>
+          </div>
+          <div id="resultBox" style="margin-top:8px;padding:12px;border-radius:8px;background:#f8fafc;border:1px solid #eef2f7">
+            <div id="resultStatus" class="badge">No scans yet</div>
+            <div id="resultReason" class="muted small" style="margin-top:8px">Scan a card to see details.</div>
+          </div>
+        </div>
+      </div>
+
+      <aside>
+        <div class="panel">
+          <strong>Authorized Badges</strong>
+          <div id="authList" style="margin-top:8px"></div>
+          <div class="small muted" style="margin-top:8px">Registered UIDs are saved in your browser (localStorage).</div>
+        </div>
+
+        <div class="panel" style="margin-top:12px">
+          <strong>Scan History</strong>
+          <div id="historyList" style="margin-top:8px;max-height:320px;overflow:auto"></div>
+        </div>
+      </aside>
+    </div>
+
+    <footer>
+      Lightweight demo for a class project. You can copy the file and open it in any browser (no server required).
+    </footer>
+  </div>
+
+<script>
+(function(){
+  const DEFAULT_AUTH = [
+    { uid: '04A3B21F', owner: 'Alaa' },
+    { uid: '77F91C02', owner: 'Hossam' },
+    { uid: '9B12D4E8', owner: 'Mona' }
+  ];
+
+  const STORAGE_KEY = 'rfid_demo_auth_v1';
+  const HISTORY_KEY = 'rfid_demo_history_v1';
+
+  function loadAuth(){ try{ const raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) : DEFAULT_AUTH.slice(); }catch(e){ return DEFAULT_AUTH.slice(); } }
+  function saveAuth(a){ localStorage.setItem(STORAGE_KEY, JSON.stringify(a)); }
+  function loadHist(){ try{ const raw = localStorage.getItem(HISTORY_KEY); return raw ? JSON.parse(raw) : []; }catch(e){ return []; } }
+  function saveHist(h){ localStorage.setItem(HISTORY_KEY, JSON.stringify(h)); }
+
+  let authorized = loadAuth();
+  let history = loadHist();
+
+  const uidInput = document.getElementById('uid');
+  const nameInput = document.getElementById('name');
+  const scanBtn = document.getElementById('scanBtn');
+  const registerBtn = document.getElementById('registerBtn');
+  const exampleGood = document.getElementById('exampleGood');
+  const exampleClone = document.getElementById('exampleClone');
+  const authList = document.getElementById('authList');
+  const historyList = document.getElementById('historyList');
+  const resultStatus = document.getElementById('resultStatus');
+  const resultReason = document.getElementById('resultReason');
+  const resultTime = document.getElementById('resultTime');
+  const clearStorage = document.getElementById('clearStorage');
+
+  function norm(s){ return (s||'').toString().trim().toUpperCase(); }
+
+  function renderAuth(){
+    authList.innerHTML = '';
+    if(!authorized.length){ authList.innerHTML = '<div class="small muted">No authorized badges</div>'; return; }
+    const ul = document.createElement('ul');
+    authorized.forEach(a => {
+      const li = document.createElement('li');
+      li.style.marginBottom = '8px';
+      li.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center"><div><strong>'+escapeHtml(a.owner)+'</strong><div class="muted small">UID: '+escapeHtml(a.uid)+'</div></div><div><button class="ghost" style="font-size:12px;padding:6px 8px" data-uid="'+escapeHtml(a.uid)+'">Simulate Clone</button></div></div>';
+      ul.appendChild(li);
+    });
+    authList.appendChild(ul);
+
+    // attach handlers for simulate clone
+    authList.querySelectorAll('button[data-uid]').forEach(b => b.addEventListener('click', e => {
+      const uid = e.currentTarget.getAttribute('data-uid');
+      simulateClone(uid);
+    }));
+  }
+
+  function renderHistory(){
+    historyList.innerHTML = '';
+    if(!history.length){ historyList.innerHTML = '<div class="small muted">No scans yet</div>'; return; }
+    history.slice().reverse().forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'history-item';
+      const left = document.createElement('div');
+      left.innerHTML = '<div><strong>'+escapeHtml(item.status)+'</strong> — '+escapeHtml(item.uid)+'</div><div class="muted small">'+escapeHtml(item.owner)+' • '+escapeHtml(item.when)+'</div><div class="small" style="margin-top:6px">'+escapeHtml(item.reason)+'</div>';
+      const right = document.createElement('div');
+      const pill = document.createElement('div');
+      pill.className = 'status-pill';
+      pill.textContent = item.status;
+      if(item.status === 'Genuine'){ pill.style.background='#10b981'; }
+      else if(item.status === 'Clone Detected'){ pill.style.background='#ef4444'; }
+      else { pill.style.background='#f59e0b'; pill.style.color='#000'; }
+      right.appendChild(pill);
+      div.appendChild(left);
+      div.appendChild(right);
+      historyList.appendChild(div);
+    });
+  }
+
+  function escapeHtml(s){ return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+
+  function detect(uidRaw, ownerRaw){
+    const u = norm(uidRaw);
+    const o = (ownerRaw||'(no name)').trim();
+    const match = authorized.find(a => a.uid === u);
+    if(match){
+      if(match.owner === o) return { status: 'Genuine', reason: 'Authorized UID and owner match.' };
+      return { status: 'Clone Detected', reason: 'UID belongs to '+match.owner+' but card used by '+o+'.' };
+    }
+    return { status: 'Unknown / Unregistered', reason: 'UID not in authorized database — could be new or unauthorized.' };
+  }
+
+  function recordResult(uid, owner, res){
+    const entry = { uid: norm(uid), owner: owner||'(no name)', status: res.status, reason: res.reason, when: new Date().toLocaleString() };
+    history.push(entry);
+    // keep last 200 entries
+    if(history.length>200) history = history.slice(history.length-200);
+    saveHist(history);
+    renderHistory();
+  }
+
+  function showResult(res){
+    resultStatus.textContent = res.status;
+    resultTime.textContent = new Date().toLocaleString();
+    resultReason.textContent = res.reason;
+    if(res.status === 'Genuine'){ resultStatus.className = 'badge'; resultStatus.style.background='#ecfdf5'; resultStatus.style.color='#065f46'; }
+    else if(res.status === 'Clone Detected'){ resultStatus.className = 'badge danger'; resultStatus.style.background='#fff1f2'; resultStatus.style.color='#7a0b1f'; }
+    else { resultStatus.className = 'badge warn'; resultStatus.style.background='#fffbeb'; resultStatus.style.color='#7a4b00'; }
+  }
+
+  scanBtn.addEventListener('click', () => {
+    const uid = uidInput.value;
+    if(!uid.trim()) return alert('Enter a UID first.');
+    const owner = nameInput.value || '(no name)';
+    const res = detect(uid, owner);
+    showResult(res);
+    recordResult(uid, owner, res);
+    uidInput.value=''; nameInput.value='';
+  });
+
+  registerBtn.addEventListener('click', () => {
+    const u = norm(uidInput.value);
+    const o = (nameInput.value||'').trim();
+    if(!u || !o) return alert('Enter UID and owner name to register.');
+    if(authorized.find(a=>a.uid===u)) return alert('UID already registered.');
+    authorized.push({ uid: u, owner: o });
+    saveAuth(authorized);
+    renderAuth();
+    uidInput.value=''; nameInput.value='';
+    alert('Registered UID '+u+' for '+o);
+  });
+
+  exampleGood.addEventListener('click', () => {
+    uidInput.value = DEFAULT_AUTH[0].uid;
+    nameInput.value = DEFAULT_AUTH[0].owner;
+  });
+
+  exampleClone.addEventListener('click', () => {
+    uidInput.value = DEFAULT_AUTH[0].uid;
+    nameInput.value = 'EvilUser';
+  });
+
+  clearStorage.addEventListener('click', () => {
+    if(!confirm('Reset authorized badges and history?')) return;
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(HISTORY_KEY);
+    authorized = DEFAULT_AUTH.slice();
+    history = [];
+    saveAuth(authorized);
+    saveHist(history);
+    renderAuth(); renderHistory();
+    resultStatus.textContent = 'No scans yet';
+    resultReason.textContent = 'Scan a card to see details.';
+  });
+
+  function simulateClone(uid){
+    const fakeOwner = 'FakeUser';
+    const res = { status: 'Clone Detected', reason: 'Simulated: same UID used by different owner ('+fakeOwner+').' };
+    recordResult(uid, fakeOwner, res);
+    showResult(res);
+  }
+
+  // initialization
+  renderAuth();
+  renderHistory();
+  // save initial auth if not present
+  if(!localStorage.getItem(STORAGE_KEY)) saveAuth(authorized);
+})();
+</script>
+</body>
+</html>
